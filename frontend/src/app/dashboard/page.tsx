@@ -14,6 +14,9 @@ import {
   Search,
   Bell,
   RefreshCw,
+  Calculator,
+  ArrowRight,
+  Upload,
 } from "lucide-react";
 
 type RFQ = {
@@ -85,6 +88,7 @@ export default function DashboardPage() {
         setRfqs((data || []) as unknown as RFQ[]);
       } catch (err) {
         console.error("Dashboard error:", err);
+
         if (active) {
           setError(
             err instanceof Error
@@ -111,28 +115,39 @@ export default function DashboardPage() {
     router.refresh();
   }
 
-  const stats = useMemo(() => [
-    {
-      label: "Total RFQs",
-      value: rfqs.length,
-      icon: FileText,
-    },
-    {
-      label: "Under Estimation",
-      value: rfqs.filter((r) => r.status === "estimating").length,
-      icon: Clock,
-    },
-    {
-      label: "Pending Approval",
-      value: rfqs.filter((r) => r.status === "pending_approval").length,
-      icon: RefreshCw,
-    },
-    {
-      label: "Quotes Sent",
-      value: rfqs.filter((r) => r.status === "sent").length,
-      icon: CheckCircle,
-    },
-  ], [rfqs]);
+  function openCosting(rfqId: string) {
+    router.push(`/rfqs/${rfqId}/costing`);
+  }
+
+  function openDocuments(rfqId: string) {
+    router.push(`/rfqs/${rfqId}/documents`);
+  }
+
+  const stats = useMemo(
+    () => [
+      {
+        label: "Total RFQs",
+        value: rfqs.length,
+        icon: FileText,
+      },
+      {
+        label: "Under Estimation",
+        value: rfqs.filter((r) => r.status === "estimating").length,
+        icon: Clock,
+      },
+      {
+        label: "Pending Approval",
+        value: rfqs.filter((r) => r.status === "pending_approval").length,
+        icon: RefreshCw,
+      },
+      {
+        label: "Quotes Sent",
+        value: rfqs.filter((r) => r.status === "sent").length,
+        icon: CheckCircle,
+      },
+    ],
+    [rfqs]
+  );
 
   const filteredRfqs = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -169,7 +184,9 @@ export default function DashboardPage() {
   }
 
   function statusLabel(status: string) {
-    return status.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    return status
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   if (loading) {
@@ -185,6 +202,7 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[#f5f6f4]">
+      {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <Factory className="text-[#172923]" size={28} />
@@ -195,7 +213,11 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-5">
           <Bell size={20} className="text-gray-500" />
-          <span className="text-sm font-medium text-gray-700">{name}</span>
+
+          <span className="text-sm font-medium text-gray-700">
+            {name}
+          </span>
+
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 text-sm text-gray-600 hover:text-red-600"
@@ -207,12 +229,17 @@ export default function DashboardPage() {
       </header>
 
       <div className="max-w-7xl mx-auto p-6 md:p-10">
+        {/* Page heading */}
         <div className="flex flex-col md:flex-row justify-between gap-4 mb-8">
           <div>
-            <p className="text-sm text-gray-500">ESTIMATOR WORKSPACE</p>
+            <p className="text-sm text-gray-500">
+              ESTIMATOR WORKSPACE
+            </p>
+
             <h1 className="text-3xl font-bold text-[#172923] mt-2">
               Good morning, {name}
             </h1>
+
             <p className="text-gray-500 mt-2">
               Here's your manufacturing quotation overview.
             </p>
@@ -227,9 +254,11 @@ export default function DashboardPage() {
           </button>
         </div>
 
+        {/* Error message */}
         {error && (
           <div className="mb-6 p-4 rounded-lg bg-red-50 text-red-700 text-sm">
             Could not load RFQ data: {error}
+
             <button
               onClick={() => window.location.reload()}
               className="ml-3 underline font-medium"
@@ -239,6 +268,7 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Statistics */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           {stats.map((item) => (
             <div
@@ -246,9 +276,16 @@ export default function DashboardPage() {
               className="bg-white p-6 rounded-xl border border-gray-200"
             >
               <div className="flex justify-between items-center">
-                <p className="text-sm text-gray-500">{item.label}</p>
-                <item.icon size={20} className="text-emerald-700" />
+                <p className="text-sm text-gray-500">
+                  {item.label}
+                </p>
+
+                <item.icon
+                  size={20}
+                  className="text-emerald-700"
+                />
               </div>
+
               <p className="text-3xl font-bold text-[#172923] mt-4">
                 {String(item.value).padStart(2, "0")}
               </p>
@@ -256,12 +293,14 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* Recent RFQs */}
         <section className="bg-white rounded-xl border border-gray-200">
           <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between gap-4 sm:items-center">
             <div>
               <h2 className="text-lg font-bold text-gray-900">
                 Recent RFQs
               </h2>
+
               <p className="text-sm text-gray-500 mt-1">
                 Your latest quotation requests
               </p>
@@ -272,6 +311,7 @@ export default function DashboardPage() {
                 size={18}
                 className="absolute left-3 top-3 text-gray-400"
               />
+
               <input
                 type="search"
                 value={search}
@@ -291,6 +331,7 @@ export default function DashboardPage() {
                   <th className="p-4">Part</th>
                   <th className="p-4">Due Date</th>
                   <th className="p-4">Status</th>
+                  <th className="p-4">Action</th>
                 </tr>
               </thead>
 
@@ -298,40 +339,79 @@ export default function DashboardPage() {
                 {filteredRfqs.map((rfq) => (
                   <tr
                     key={rfq.id}
-                    onClick={() => router.push(`/rfqs/${rfq.id}`)}
-                    className="border-t hover:bg-gray-50 cursor-pointer transition"
+                    className="border-t hover:bg-gray-50 transition"
                   >
                     <td className="p-4 font-medium text-[#172923]">
-                      {rfq.rfq_number}
+                      <button
+                        onClick={() => openCosting(rfq.id)}
+                        className="hover:text-emerald-700 hover:underline"
+                      >
+                        {rfq.rfq_number}
+                      </button>
                     </td>
+
                     <td className="p-4">
                       {rfq.customers?.name || "Unknown"}
                     </td>
+
                     <td className="p-4">
-                      {rfq.parts.map((part) => part.part_name).join(", ") || "—"}
+                      {rfq.parts
+                        .map((part) => part.part_name)
+                        .join(", ") || "—"}
                     </td>
+
                     <td className="p-4">
                       {rfq.due_date
                         ? new Date(rfq.due_date).toLocaleDateString("en-IN")
                         : "—"}
                     </td>
+
                     <td className="p-4">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusStyle(rfq.status)}`}
+                        className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusStyle(
+                          rfq.status
+                        )}`}
                       >
                         {statusLabel(rfq.status)}
                       </span>
+                    </td>
+
+                    <td className="p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => openCosting(rfq.id)}
+                          className="inline-flex items-center gap-2 rounded-lg bg-[#172923] px-3 py-2 text-xs font-semibold text-white hover:bg-[#263d32]"
+                        >
+                          <Calculator size={15} />
+                          Costing
+                          <ArrowRight size={14} />
+                        </button>
+                        <button
+                          onClick={() => openDocuments(rfq.id)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-emerald-700 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+                        >
+                          <Upload size={15} />
+                          Documents
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
 
                 {filteredRfqs.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-12 text-center">
-                      <FileText className="mx-auto text-gray-300 mb-3" size={32} />
+                    <td colSpan={6} className="p-12 text-center">
+                      <FileText
+                        className="mx-auto text-gray-300 mb-3"
+                        size={32}
+                      />
+
                       <p className="font-medium text-gray-700">
-                        {search ? "No matching RFQs found" : "No RFQs yet"}
+                        {search
+                          ? "No matching RFQs found"
+                          : "No RFQs yet"}
                       </p>
+
                       <p className="text-gray-500 text-sm mt-1">
                         {search
                           ? "Try a different search term."
