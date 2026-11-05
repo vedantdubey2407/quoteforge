@@ -1,7 +1,5 @@
 "use client";
 
-
-
 import { useEffect, useState } from "react";
 
 import { useParams, useRouter } from "next/navigation";
@@ -28,8 +26,6 @@ import {
 
 } from "lucide-react";
 
-
-
 type Part = {
 
   id: string;
@@ -49,8 +45,6 @@ type Part = {
   machine_hour_rate: number;
 
 };
-
-
 
 type CostResult = {
 
@@ -84,8 +78,6 @@ type CostResult = {
 
 };
 
-
-
 type CostingForm = {
 
   material_rate_per_kg: string;
@@ -104,8 +96,6 @@ type CostingForm = {
 
 };
 
-
-
 type SavedQuote = {
 
   quote_id: string;
@@ -116,7 +106,46 @@ type SavedQuote = {
 
 };
 
+type RoutingStep = {
+  sequence_number: number;
+  operation_name: string;
+  machine_type: string | null;
+  estimated_cycle_time_minutes: number | null;
+  source_note: string | null;
+};
 
+type RoutingSuggestion = {
+  part_id: string;
+  part_number: string;
+  part_name: string;
+  material: string | null;
+  gross_weight_kg: number | null;
+  cycle_time_minutes: number | null;
+  source_type: string;
+  similarity_score: number;
+  similarity_reasons: {
+    material_match: number;
+    weight_similarity: number;
+    part_name_similarity: number;
+    cycle_time_similarity: number;
+  };
+  routing_steps: RoutingStep[];
+};
+
+type RoutingApiResponse = {
+  success: boolean;
+  message: string;
+  target_part?: string;
+  historical_parts_considered?: number;
+  data?: {
+    suggestions: RoutingSuggestion[];
+    method: string;
+    human_review_required: boolean;
+    notice: string;
+  };
+  suggestions?: RoutingSuggestion[];
+  human_review_required: boolean;
+};
 
 const formatINR = (value: number) =>
 
@@ -131,8 +160,6 @@ const formatINR = (value: number) =>
     maximumFractionDigits: 2,
 
   }).format(value);
-
-
 
 const initialForm: CostingForm = {
 
@@ -152,8 +179,6 @@ const initialForm: CostingForm = {
 
 };
 
-
-
 export default function CostingPage() {
 
   const params = useParams();
@@ -162,8 +187,6 @@ export default function CostingPage() {
 
   const rfqId = params.id as string;
 
-
-
   const [part, setPart] = useState<Part | null>(null);
 
   const [rfqNumber, setRfqNumber] = useState("");
@@ -171,15 +194,25 @@ export default function CostingPage() {
   const [customerName, setCustomerName] = useState("");
 
   const [form, setForm] = useState<CostingForm>(initialForm);
+
   const [costingDate, setCostingDate] = useState(() => {
+
     const now = new Date();
+
     return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+
       .toISOString()
+
       .slice(0, 10);
+
   });
+
   const [machineHourRate, setMachineHourRate] = useState<number | null>(null);
+
   const [rateLoading, setRateLoading] = useState(false);
+
   const [rateSourceSummary, setRateSourceSummary] = useState("");
+
   const [result, setResult] = useState<CostResult | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -189,110 +222,185 @@ export default function CostingPage() {
   const [saving, setSaving] = useState(false);
 
   const [savedQuote, setSavedQuote] = useState<SavedQuote | null>(null);
+  const [routingLoading, setRoutingLoading] = useState(false);
+  const [routingError, setRoutingError] = useState("");
+  const [routingSuggestions, setRoutingSuggestions] = useState<RoutingSuggestion[]>([]);
+  const [reviewedRoutingIds, setReviewedRoutingIds] = useState<string[]>([]);
+  const [routingNotice, setRoutingNotice] = useState("");
 
   const [error, setError] = useState("");
 
   const [success, setSuccess] = useState("");
 
   async function applyEffectiveRates(targetPart: Part, targetDate: string) {
+
     setRateLoading(true);
+
     setError("");
+
     try {
+
       const supabase = createClient();
+
       const [{ data: masters, error: masterError }, { data: versions, error: versionError }] =
+
         await Promise.all([
+
           supabase
+
             .from("rate_masters")
+
             .select("id, rate_name, rate_type, unit"),
+
           supabase
+
             .from("rate_versions")
+
             .select("rate_master_id, rate_value, effective_from, effective_to")
+
             .lte("effective_from", targetDate)
+
             .order("effective_from", { ascending: false }),
+
         ]);
 
       if (masterError) throw masterError;
+
       if (versionError) throw versionError;
 
       const activeVersions = (versions || []).filter(
+
         (version) =>
+
           version.effective_from <= targetDate &&
+
           (!version.effective_to || version.effective_to >= targetDate)
+
       );
 
       const getRate = (master: { id: string; rate_name: string; rate_type: string }) => {
+
         const version = activeVersions.find(
+
           (item) => item.rate_master_id === master.id
+
         );
+
         return version ? Number(version.rate_value) : null;
+
       };
 
       const materialKey =
+
         targetPart.material.toLowerCase().match(/[a-z0-9]+/)?.[0] ?? "";
+
       const materialMaster = (masters || []).find((master) => {
+
         if (master.rate_type !== "material") return false;
+
         const masterKey = master.rate_name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
         return materialKey.length > 0 && masterKey.startsWith(materialKey);
+
       });
+
       const machineMaster = (masters || []).find((master) => master.rate_type === "machine");
+
       const overheadMaster = (masters || []).find((master) => master.rate_type === "overhead");
+
       const packingMaster = (masters || []).find((master) => master.rate_type === "packing");
+
       const freightMaster = (masters || []).find((master) => master.rate_type === "freight");
 
       const required = [
+
         ["material", materialMaster],
+
         ["machine", machineMaster],
+
         ["overhead", overheadMaster],
+
         ["packing", packingMaster],
+
         ["freight", freightMaster],
+
       ] as const;
+
       const missing = required
+
         .filter(([, master]) => !master || getRate(master) === null)
+
         .map(([label]) => label);
 
       if (missing.length) {
+
         throw new Error(
+
           `No effective ${missing.join(", ")} rate found for ${targetDate}. Check Rate Masters.`
+
         );
+
       }
 
       const materialRate = getRate(materialMaster!)!;
+
       const machineRate = getRate(machineMaster!)!;
+
       const overheadRate = getRate(overheadMaster!)!;
+
       const packingRate = getRate(packingMaster!)!;
+
       const freightRate = getRate(freightMaster!)!;
 
       setForm((previous) => ({
+
         ...previous,
+
         material_rate_per_kg: String(materialRate),
+
         overhead_percent: String(overheadRate),
+
         packing_cost_per_part: String(packingRate),
+
         freight_cost_per_part: String(freightRate),
+
       }));
+
       setMachineHourRate(machineRate);
+
       setRateSourceSummary(
+
         `Rates loaded for ${targetDate}: ${materialMaster!.rate_name}, ${machineMaster!.rate_name}, overhead, packing and freight.`
+
       );
+
       setResult(null);
+
       setSavedQuote(null);
+
     } catch (rateError) {
+
       setMachineHourRate(null);
+
       setRateSourceSummary("");
+
       setError(
+
         rateError instanceof Error ? rateError.message : "Unable to load effective rates."
+
       );
+
     } finally {
+
       setRateLoading(false);
+
     }
+
   }
-
-
 
   useEffect(() => {
 
     let active = true;
-
-
 
     async function loadRFQ() {
 
@@ -301,8 +409,6 @@ export default function CostingPage() {
         setLoading(true);
 
         setError("");
-
-
 
         const supabase = createClient();
 
@@ -314,8 +420,6 @@ export default function CostingPage() {
 
         } = await supabase.auth.getUser();
 
-
-
         if (authError || !user) {
 
           router.replace("/");
@@ -323,8 +427,6 @@ export default function CostingPage() {
           return;
 
         }
-
-
 
         const { data, error: fetchError } = await supabase
 
@@ -368,13 +470,9 @@ export default function CostingPage() {
 
           .single();
 
-
-
         if (fetchError) throw fetchError;
 
         if (!data) throw new Error("RFQ not found or access denied.");
-
-
 
         const parts = data.parts as unknown as Part[];
 
@@ -384,11 +482,7 @@ export default function CostingPage() {
 
         }
 
-
-
         if (!active) return;
-
-
 
         setRfqNumber(data.rfq_number);
 
@@ -399,6 +493,7 @@ export default function CostingPage() {
         );
 
         setPart(parts[0]);
+
         await applyEffectiveRates(parts[0], costingDate);
 
       } catch (err) {
@@ -423,11 +518,7 @@ export default function CostingPage() {
 
     }
 
-
-
     if (rfqId) loadRFQ();
-
-
 
     return () => {
 
@@ -436,8 +527,6 @@ export default function CostingPage() {
     };
 
   }, [rfqId, router, costingDate]);
-
-
 
   function updateField(field: keyof CostingForm, value: string) {
 
@@ -453,8 +542,6 @@ export default function CostingPage() {
 
   }
 
-
-
   function validateForm(): boolean {
 
     for (const [key, value] of Object.entries(form) as [keyof CostingForm, string][]) {
@@ -467,8 +554,6 @@ export default function CostingPage() {
 
       }
 
-
-
       if (Number(value) < 0) {
 
         setError("Costing values cannot be negative.");
@@ -479,8 +564,6 @@ export default function CostingPage() {
 
     }
 
-
-
     if (Number(form.scrap_percent) > 100) {
 
       setError("Scrap allowance cannot exceed 100%.");
@@ -488,8 +571,6 @@ export default function CostingPage() {
       return false;
 
     }
-
-
 
     if (Number(form.overhead_percent) > 100) {
 
@@ -499,8 +580,6 @@ export default function CostingPage() {
 
     }
 
-
-
     if (Number(form.margin_percent) >= 100) {
 
       setError("Gross margin must be less than 100%.");
@@ -508,8 +587,6 @@ export default function CostingPage() {
       return false;
 
     }
-
-
 
     if (Number(form.gst_percent) > 100) {
 
@@ -519,19 +596,13 @@ export default function CostingPage() {
 
     }
 
-
-
     return true;
 
   }
 
-
-
   async function calculate() {
 
     if (!part) return;
-
-
 
     setError("");
 
@@ -541,11 +612,7 @@ export default function CostingPage() {
 
     setSavedQuote(null);
 
-
-
     if (!validateForm()) return;
-
-
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
@@ -557,11 +624,7 @@ export default function CostingPage() {
 
     }
 
-
-
     setCalculating(true);
-
-
 
     try {
 
@@ -605,11 +668,7 @@ export default function CostingPage() {
 
       );
 
-
-
       const payload = await response.json();
-
-
 
       if (!response.ok) {
 
@@ -625,15 +684,11 @@ export default function CostingPage() {
 
       }
 
-
-
       if (!payload.data) {
 
         throw new Error("The costing API returned an invalid response.");
 
       }
-
-
 
       setResult(payload.data as CostResult);
 
@@ -661,21 +716,15 @@ export default function CostingPage() {
 
   }
 
-
-
   async function saveCosting() {
 
     if (!part || !result || savedQuote) return;
-
-
 
     setSaving(true);
 
     setError("");
 
     setSuccess("");
-
-
 
     try {
 
@@ -689,8 +738,6 @@ export default function CostingPage() {
 
       } = await supabase.auth.getUser();
 
-
-
       if (authError || !user) {
 
         router.replace("/");
@@ -698,8 +745,6 @@ export default function CostingPage() {
         return;
 
       }
-
-
 
       const { data, error: saveError } = await supabase.rpc(
 
@@ -757,8 +802,6 @@ export default function CostingPage() {
 
       );
 
-
-
       if (saveError) throw saveError;
 
       if (!data?.success || !data?.quote_id) {
@@ -766,8 +809,6 @@ export default function CostingPage() {
         throw new Error("The costing snapshot could not be saved.");
 
       }
-
-
 
       setSavedQuote({
 
@@ -799,7 +840,66 @@ export default function CostingPage() {
 
   }
 
+  async function fetchRoutingSuggestions() {
+    if (!part) return;
 
+    setRoutingLoading(true);
+    setRoutingError("");
+    setRoutingNotice("");
+    setRoutingSuggestions([]);
+    setReviewedRoutingIds([]);
+
+    try {
+      const supabase = createClient();
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+
+      if (authError || !session?.access_token) {
+        router.replace("/");
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) throw new Error("Backend API URL is missing. Check frontend/.env.local.");
+
+      const response = await fetch(
+        `${apiUrl.replace(/\/+$/, "")}/api/routing/suggest`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ rfq_id: rfqId, part_id: part.id, limit: 3 }),
+        }
+      );
+
+      const payload = await response.json() as RoutingApiResponse & { detail?: string };
+      if (!response.ok) {
+        throw new Error(payload.detail || "Unable to retrieve routing suggestions.");
+      }
+
+      const suggestions = payload.data?.suggestions ?? payload.suggestions ?? [];
+      setRoutingSuggestions(suggestions);
+      setRoutingNotice(
+        payload.data?.notice ?? payload.message ?? "Review suggested operations before use."
+      );
+    } catch (err) {
+      console.error("Routing suggestion error:", err);
+      setRoutingError(
+        err instanceof Error ? err.message : "Unable to retrieve routing suggestions."
+      );
+    } finally {
+      setRoutingLoading(false);
+    }
+  }
+
+  function markRoutingReviewed(partId: string) {
+    setReviewedRoutingIds((previous) =>
+      previous.includes(partId)
+        ? previous.filter((id) => id !== partId)
+        : [...previous, partId]
+    );
+  }
 
   function resetCalculation() {
 
@@ -814,8 +914,6 @@ export default function CostingPage() {
     setSuccess("");
 
   }
-
-
 
   if (loading) {
 
@@ -840,8 +938,6 @@ export default function CostingPage() {
     );
 
   }
-
-
 
   if (error && !part) {
 
@@ -881,11 +977,7 @@ export default function CostingPage() {
 
   }
 
-
-
   if (!part) return null;
-
-
 
   const fields: {
 
@@ -915,8 +1007,6 @@ export default function CostingPage() {
 
   ];
 
-
-
   const breakdown: { key: keyof CostResult; label: string }[] = [
 
     { key: "material_cost", label: "Material cost" },
@@ -932,8 +1022,6 @@ export default function CostingPage() {
     { key: "freight_cost", label: "Freight" },
 
   ];
-
-
 
   return (
 
@@ -954,8 +1042,6 @@ export default function CostingPage() {
           Back to dashboard
 
         </button>
-
-
 
         <div className="mb-8">
 
@@ -978,8 +1064,6 @@ export default function CostingPage() {
           </p>
 
         </div>
-
-
 
         <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
 
@@ -1022,8 +1106,6 @@ export default function CostingPage() {
             </div>
 
           </div>
-
-
 
           <div className="mt-5 grid grid-cols-1 gap-5 border-t border-slate-200 pt-5 sm:grid-cols-2 lg:grid-cols-4">
 
@@ -1095,7 +1177,93 @@ export default function CostingPage() {
 
         </section>
 
+        <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-950">Historical routing recommendations</h2>
+              <p className="mt-1 text-sm text-slate-600">Find similar parts and review their previous manufacturing operations.</p>
+            </div>
+            <button
+              onClick={fetchRoutingSuggestions}
+              disabled={routingLoading || rateLoading}
+              className="flex items-center justify-center gap-2 rounded-lg bg-[#172923] px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {routingLoading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+              {routingLoading ? "Finding similar parts..." : "Find similar routings"}
+            </button>
+          </div>
 
+          {routingError && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{routingError}</div>
+          )}
+
+          {routingNotice && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{routingNotice}</div>
+          )}
+
+          {routingSuggestions.map((suggestion) => {
+            const reviewed = reviewedRoutingIds.includes(suggestion.part_id);
+            return (
+              <div key={suggestion.part_id} className="mt-5 rounded-xl border border-slate-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-950">{suggestion.part_number} — {suggestion.part_name}</h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Material: {suggestion.material ?? "Not available"} · Weight: {suggestion.gross_weight_kg ?? "N/A"} kg · Cycle time: {suggestion.cycle_time_minutes ?? "N/A"} min
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 px-4 py-2 text-center">
+                    <p className="text-2xl font-bold text-emerald-800">{suggestion.similarity_score}%</p>
+                    <p className="text-xs font-medium text-emerald-700">Similarity</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Material</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.material_match}%</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Weight</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.weight_similarity}%</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Part name</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.part_name_similarity}%</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Cycle time</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.cycle_time_similarity}%</p></div>
+                </div>
+
+                <h4 className="mt-5 font-semibold text-slate-900">Suggested manufacturing operations</h4>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-slate-500"><tr><th className="py-2 pr-3">Step</th><th className="py-2 pr-3">Operation</th><th className="py-2 pr-3">Machine</th><th className="py-2">Time</th></tr></thead>
+                    <tbody>
+                      {suggestion.routing_steps.map((step) => (
+                        <tr key={step.sequence_number} className="border-b border-slate-100">
+                          <td className="py-3 pr-3 text-slate-600">{step.sequence_number}</td>
+                          <td className="py-3 pr-3 font-medium text-slate-900">{step.operation_name}</td>
+                          <td className="py-3 pr-3 text-slate-700">{step.machine_type ?? "—"}</td>
+                          <td className="py-3 text-slate-700">{step.estimated_cycle_time_minutes ?? "—"} min</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {suggestion.source_type === "demo_hypothetical" && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Demonstration route only. These operations are hypothetical and must be validated by the estimator before use.
+                    {suggestion.routing_steps.some((step) => step.source_note) && (
+                      <ul className="mt-2 list-disc pl-5">
+                        {[...new Set(suggestion.routing_steps.map((step) => step.source_note).filter(Boolean))].map((note) => <li key={note}>{note}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => markRoutingReviewed(suggestion.part_id)}
+                  className={`mt-4 rounded-lg px-4 py-2 text-sm font-semibold ${reviewed ? "border border-emerald-300 bg-emerald-50 text-emerald-800" : "bg-slate-900 text-white hover:bg-slate-700"}`}
+                >
+                  {reviewed ? "Reviewed ✓" : "Mark as reviewed"}
+                </button>
+                <p className="mt-2 text-xs text-slate-500">Review status is temporary and is not saved to the database yet. This action does not apply the route to costing.</p>
+              </div>
+            );
+          })}
+        </section>
 
         <div className="grid items-start gap-6 lg:grid-cols-2">
 
@@ -1169,8 +1337,6 @@ export default function CostingPage() {
 
             </div>
 
-
-
             <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2">
 
               {fields.map((field) => (
@@ -1219,8 +1385,6 @@ export default function CostingPage() {
 
             </div>
 
-
-
             {error && (
 
               <div className="mt-5 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
@@ -1233,8 +1397,6 @@ export default function CostingPage() {
 
             )}
 
-
-
             {success && (
 
               <div className="mt-5 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
@@ -1246,8 +1408,6 @@ export default function CostingPage() {
               </div>
 
             )}
-
-
 
             <button
 
@@ -1275,8 +1435,6 @@ export default function CostingPage() {
 
           </section>
 
-
-
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
 
             <div className="mb-7">
@@ -1290,8 +1448,6 @@ export default function CostingPage() {
               </p>
 
             </div>
-
-
 
             {!result ? (
 
@@ -1353,8 +1509,6 @@ export default function CostingPage() {
 
                 </div>
 
-
-
                 <div className="mt-6 border-t border-slate-200 pt-5">
 
                   <div className="flex items-center justify-between gap-4">
@@ -1374,8 +1528,6 @@ export default function CostingPage() {
                   </div>
 
                 </div>
-
-
 
                 <div className="mt-6 rounded-xl border border-emerald-100 bg-emerald-50 p-5">
 
@@ -1398,8 +1550,6 @@ export default function CostingPage() {
                   </p>
 
                 </div>
-
-
 
                 <div className="mt-6 space-y-4 text-sm">
 
@@ -1465,8 +1615,6 @@ export default function CostingPage() {
 
                 </div>
 
-
-
                 {savedQuote && (
 
                   <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
@@ -1486,8 +1634,6 @@ export default function CostingPage() {
                   </div>
 
                 )}
-
-
 
                 <button
 
@@ -1521,8 +1667,6 @@ export default function CostingPage() {
 
                 </button>
 
-
-
                 <button
 
                   onClick={resetCalculation}
@@ -1546,8 +1690,6 @@ export default function CostingPage() {
           </section>
 
         </div>
-
-
 
         <p className="mt-6 text-center text-xs text-slate-500">
 
