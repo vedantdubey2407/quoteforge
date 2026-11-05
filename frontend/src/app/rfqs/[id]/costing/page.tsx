@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 
 import { useParams, useRouter } from "next/navigation";
 
@@ -179,7 +179,7 @@ const initialForm: CostingForm = {
 
 };
 
-export default function CostingPage() {
+function CostingPageContent() {
 
   const params = useParams();
 
@@ -226,6 +226,7 @@ export default function CostingPage() {
   const [routingError, setRoutingError] = useState("");
   const [routingSuggestions, setRoutingSuggestions] = useState<RoutingSuggestion[]>([]);
   const [reviewedRoutingIds, setReviewedRoutingIds] = useState<string[]>([]);
+  const [routingReviewSavingIds, setRoutingReviewSavingIds] = useState<string[]>([]);
   const [routingNotice, setRoutingNotice] = useState("");
 
   const [error, setError] = useState("");
@@ -883,6 +884,25 @@ export default function CostingPage() {
       setRoutingNotice(
         payload.data?.notice ?? payload.message ?? "Review suggested operations before use."
       );
+
+      // Restore previously saved review status for this RFQ part.
+      const reviewsResponse = await fetch(
+        `${apiUrl.replace(/\/+$/, "")}/api/routing/reviews?rfq_id=${encodeURIComponent(rfqId)}&part_id=${encodeURIComponent(part.id)}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+
+      if (reviewsResponse.ok) {
+        const reviewsPayload = await reviewsResponse.json();
+        const savedIds = (reviewsPayload.reviews ?? []).map(
+          (review: { suggested_part_id: string }) => review.suggested_part_id
+        );
+        setReviewedRoutingIds(savedIds);
+      } else {
+        setRoutingError("Suggestions loaded, but saved review status could not be retrieved.");
+      }
     } catch (err) {
       console.error("Routing suggestion error:", err);
       setRoutingError(
@@ -893,12 +913,71 @@ export default function CostingPage() {
     }
   }
 
-  function markRoutingReviewed(partId: string) {
-    setReviewedRoutingIds((previous) =>
-      previous.includes(partId)
-        ? previous.filter((id) => id !== partId)
-        : [...previous, partId]
-    );
+  async function saveRoutingReview(suggestion: RoutingSuggestion) {
+    if (!part || reviewedRoutingIds.includes(suggestion.part_id)) return;
+
+    setRoutingReviewSavingIds((previous) => [...previous, suggestion.part_id]);
+    setRoutingError("");
+
+    try {
+      const supabase = createClient();
+      const {
+        data: { session },
+        error: authError,
+      } = await supabase.auth.getSession();
+
+      if (authError || !session?.access_token) {
+        router.replace("/");
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) throw new Error("Backend API URL is missing.");
+
+      const response = await fetch(
+        `${apiUrl.replace(/\/+$/, "")}/api/routing/review`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            rfq_id: rfqId,
+            target_part_id: part.id,
+            suggested_part_id: suggestion.part_id,
+            similarity_score: suggestion.similarity_score,
+            source_type: suggestion.source_type,
+            suggestion_snapshot: suggestion,
+          }),
+        }
+      );
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          typeof payload.detail === "string"
+            ? payload.detail
+            : "Unable to save routing review."
+        );
+      }
+
+      setReviewedRoutingIds((previous) =>
+        previous.includes(suggestion.part_id)
+          ? previous
+          : [...previous, suggestion.part_id]
+      );
+      setSuccess(`Routing review for ${suggestion.part_number} saved successfully.`);
+    } catch (err) {
+      console.error("Save routing review error:", err);
+      setRoutingError(
+        err instanceof Error ? err.message : "Unable to save routing review."
+      );
+    } finally {
+      setRoutingReviewSavingIds((previous) =>
+        previous.filter((id) => id !== suggestion.part_id)
+      );
+    }
   }
 
   function resetCalculation() {
@@ -1254,12 +1333,19 @@ export default function CostingPage() {
                 )}
 
                 <button
-                  onClick={() => markRoutingReviewed(suggestion.part_id)}
-                  className={`mt-4 rounded-lg px-4 py-2 text-sm font-semibold ${reviewed ? "border border-emerald-300 bg-emerald-50 text-emerald-800" : "bg-slate-900 text-white hover:bg-slate-700"}`}
+                  onClick={() => saveRoutingReview(suggestion)}
+                  disabled={reviewed || routingReviewSavingIds.includes(suggestion.part_id)}
+                  className={`mt-4 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70 ${reviewed ? "border border-emerald-300 bg-emerald-50 text-emerald-800" : "bg-slate-900 text-white hover:bg-slate-700"}`}
                 >
-                  {reviewed ? "Reviewed ✓" : "Mark as reviewed"}
+                  {routingReviewSavingIds.includes(suggestion.part_id)
+                    ? "Saving review..."
+                    : reviewed
+                      ? "Reviewed ✓ (saved)"
+                      : "Mark as reviewed"}
                 </button>
-                <p className="mt-2 text-xs text-slate-500">Review status is temporary and is not saved to the database yet. This action does not apply the route to costing.</p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Review is saved to Supabase with the estimator, timestamp, source, and routing snapshot. This does not approve factory instructions or apply the route to costing.
+                </p>
               </div>
             );
           })}
@@ -1703,4 +1789,17 @@ export default function CostingPage() {
 
   );
 
+}
+export default function CostingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-slate-600">Loading costing workspace...</p>
+        </div>
+      }
+    >
+      <CostingPageContent />
+    </Suspense>
+  );
 }
