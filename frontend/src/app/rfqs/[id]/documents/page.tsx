@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -59,7 +59,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export default function RfqDocumentsPage() {
+function RfqDocumentsContent() {
   const params = useParams();
   const router = useRouter();
   const rfqId = params.id as string;
@@ -613,5 +613,23 @@ export default function RfqDocumentsPage() {
         </section>
       </div>
     </main>
+  );
+}
+export default function RfqDocumentsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f5f7f6]">
+          <div className="flex items-center gap-3 text-slate-600">
+            <Loader2 size={22} className="animate-spin text-emerald-700" />
+            <span className="text-sm font-medium">
+              Loading RFQ documents...
+            </span>
+          </div>
+        </main>
+      }
+    >
+      <RfqDocumentsContent />
+    </Suspense>
   );
 }

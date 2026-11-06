@@ -317,7 +317,7 @@ export default function DashboardPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search RFQ, customer or part..."
-                className="w-full border border-gray-200 rounded-lg py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-emerald-700"
+                 className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
               />
             </div>
           </div>

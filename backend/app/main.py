@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.documents import router as documents_router
 from app.api.costing import router as costing_router
 from app.api.routing import router as routing_router
+from app.api.historical import router as historical_router
 
 app = FastAPI(
     title="QuoteForge API",
@@ -36,3 +37,4 @@ def health():
 app.include_router(costing_router)
 app.include_router(documents_router)
 app.include_router(routing_router)
+app.include_router(historical_router)

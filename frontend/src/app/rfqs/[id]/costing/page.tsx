@@ -115,13 +115,21 @@ type RoutingStep = {
 };
 
 type RoutingSuggestion = {
-  part_id: string;
+  // Existing RFQ suggestions carry part_id; imported CSV suggestions carry record_id.
+  part_id?: string | null;
+  record_id?: string | null;
+  rfq_number: string | null;
+  quote_date: string | null;
+  customer_name: string | null;
   part_number: string;
   part_name: string;
   material: string | null;
   gross_weight_kg: number | null;
+  annual_volume: number | null;
   cycle_time_minutes: number | null;
   source_type: string;
+  data_source: string;
+  is_synthetic: boolean | null;
   similarity_score: number;
   similarity_reasons: {
     material_match: number;
@@ -160,6 +168,27 @@ const formatINR = (value: number) =>
     maximumFractionDigits: 2,
 
   }).format(value);
+
+function getRoutingSuggestionKey(
+  suggestion: RoutingSuggestion
+): string {
+  if (suggestion.record_id) {
+    return `record:${suggestion.record_id}`;
+  }
+
+  if (suggestion.part_id) {
+    return `part:${suggestion.part_id}`;
+  }
+
+  return `suggestion:${suggestion.part_number}`;
+}
+
+function isImportedCsvSuggestion(suggestion: RoutingSuggestion): boolean {
+  return (
+    suggestion.source_type === "imported_historical_csv" ||
+    suggestion.data_source === "historical_quotes"
+  );
+}
 
 const initialForm: CostingForm = {
 
@@ -896,9 +925,20 @@ function CostingPageContent() {
 
       if (reviewsResponse.ok) {
         const reviewsPayload = await reviewsResponse.json();
-        const savedIds = (reviewsPayload.reviews ?? []).map(
-          (review: { suggested_part_id: string }) => review.suggested_part_id
-        );
+        const savedIds = (reviewsPayload.reviews ?? [])
+          .map(
+            (review: {
+              suggested_part_id: string | null;
+              historical_record_id: string | null;
+            }) =>
+              review.historical_record_id
+                ? `record:${review.historical_record_id}`
+                : review.suggested_part_id
+                  ? `part:${review.suggested_part_id}`
+                  : ""
+          )
+          .filter(Boolean);
+
         setReviewedRoutingIds(savedIds);
       } else {
         setRoutingError("Suggestions loaded, but saved review status could not be retrieved.");
@@ -914,9 +954,11 @@ function CostingPageContent() {
   }
 
   async function saveRoutingReview(suggestion: RoutingSuggestion) {
-    if (!part || reviewedRoutingIds.includes(suggestion.part_id)) return;
+    const suggestionKey = getRoutingSuggestionKey(suggestion);
 
-    setRoutingReviewSavingIds((previous) => [...previous, suggestion.part_id]);
+    if (!part || reviewedRoutingIds.includes(suggestionKey)) return;
+
+    setRoutingReviewSavingIds((previous) => [...previous, suggestionKey]);
     setRoutingError("");
 
     try {
@@ -945,7 +987,8 @@ function CostingPageContent() {
           body: JSON.stringify({
             rfq_id: rfqId,
             target_part_id: part.id,
-            suggested_part_id: suggestion.part_id,
+            suggested_part_id: suggestion.part_id ?? null,
+            historical_record_id: suggestion.record_id ?? null,
             similarity_score: suggestion.similarity_score,
             source_type: suggestion.source_type,
             suggestion_snapshot: suggestion,
@@ -963,9 +1006,9 @@ function CostingPageContent() {
       }
 
       setReviewedRoutingIds((previous) =>
-        previous.includes(suggestion.part_id)
+        previous.includes(suggestionKey)
           ? previous
-          : [...previous, suggestion.part_id]
+          : [...previous, suggestionKey]
       );
       setSuccess(`Routing review for ${suggestion.part_number} saved successfully.`);
     } catch (err) {
@@ -975,7 +1018,7 @@ function CostingPageContent() {
       );
     } finally {
       setRoutingReviewSavingIds((previous) =>
-        previous.filter((id) => id !== suggestion.part_id)
+        previous.filter((id) => id !== suggestionKey)
       );
     }
   }
@@ -1281,15 +1324,34 @@ function CostingPageContent() {
           )}
 
           {routingSuggestions.map((suggestion) => {
-            const reviewed = reviewedRoutingIds.includes(suggestion.part_id);
+            const suggestionKey = getRoutingSuggestionKey(suggestion);
+            const reviewed = reviewedRoutingIds.includes(suggestionKey);
+            const reviewSaving = routingReviewSavingIds.includes(suggestionKey);
+            const importedCsv = isImportedCsvSuggestion(suggestion);
             return (
-              <div key={suggestion.part_id} className="mt-5 rounded-xl border border-slate-200 p-4">
+              <div key={suggestionKey} className="mt-5 rounded-xl border border-slate-200 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-bold text-slate-950">{suggestion.part_number} — {suggestion.part_name}</h3>
                     <p className="mt-1 text-sm text-slate-600">
-                      Material: {suggestion.material ?? "Not available"} · Weight: {suggestion.gross_weight_kg ?? "N/A"} kg · Cycle time: {suggestion.cycle_time_minutes ?? "N/A"} min
+                      Customer: {suggestion.customer_name ?? "Not available"}
                     </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {importedCsv ? (
+                        <>
+                          <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-800">
+                            Imported CSV
+                          </span>
+                          <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                            Synthetic demo data
+                          </span>
+                        </>
+                      ) : (
+                        <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
+                          Existing RFQ
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="rounded-lg bg-emerald-50 px-4 py-2 text-center">
                     <p className="text-2xl font-bold text-emerald-800">{suggestion.similarity_score}%</p>
@@ -1297,11 +1359,21 @@ function CostingPageContent() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Material</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.material_match}%</p></div>
-                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Weight</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.weight_similarity}%</p></div>
-                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Part name</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.part_name_similarity}%</p></div>
-                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Cycle time</p><p className="mt-1 font-semibold text-slate-900">{suggestion.similarity_reasons.cycle_time_similarity}%</p></div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">RFQ number</p><p className="mt-1 font-semibold text-slate-900">{suggestion.rfq_number ?? "N/A"}</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Quote date</p><p className="mt-1 font-semibold text-slate-900">{suggestion.quote_date ?? "N/A"}</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Annual volume</p><p className="mt-1 font-semibold text-slate-900">{suggestion.annual_volume !== null && suggestion.annual_volume !== undefined ? `${Number(suggestion.annual_volume).toLocaleString("en-IN")} parts` : "N/A"}</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Material</p><p className="mt-1 font-semibold text-slate-900">{suggestion.material ?? "Not available"}</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Gross weight</p><p className="mt-1 font-semibold text-slate-900">{suggestion.gross_weight_kg ?? "N/A"} kg</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Cycle time</p><p className="mt-1 font-semibold text-slate-900">{suggestion.cycle_time_minutes ?? "N/A"} min</p></div>
+                </div>
+
+                <h4 className="mt-5 font-semibold text-slate-900">Similarity breakdown</h4>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Material</p><p className="mt-1 font-semibold text-slate-900">{(suggestion.similarity_reasons.material_match * 100).toFixed(1)}%</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Weight</p><p className="mt-1 font-semibold text-slate-900">{(suggestion.similarity_reasons.weight_similarity * 100).toFixed(1)}%</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Part name</p><p className="mt-1 font-semibold text-slate-900">{(suggestion.similarity_reasons.part_name_similarity * 100).toFixed(1)}%</p></div>
+                  <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Cycle time</p><p className="mt-1 font-semibold text-slate-900">{(suggestion.similarity_reasons.cycle_time_similarity * 100).toFixed(1)}%</p></div>
                 </div>
 
                 <h4 className="mt-5 font-semibold text-slate-900">Suggested manufacturing operations</h4>
@@ -1321,6 +1393,15 @@ function CostingPageContent() {
                   </table>
                 </div>
 
+                {importedCsv && (
+                  <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    <p className="font-semibold">Synthetic demo data</p>
+                    <p className="mt-1">
+                      This suggestion comes from imported historical CSV records, which are synthetic demonstration data. The operations shown must be validated by the estimator before they are used.
+                    </p>
+                  </div>
+                )}
+
                 {suggestion.source_type === "demo_hypothetical" && (
                   <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     Demonstration route only. These operations are hypothetical and must be validated by the estimator before use.
@@ -1334,14 +1415,14 @@ function CostingPageContent() {
 
                 <button
                   onClick={() => saveRoutingReview(suggestion)}
-                  disabled={reviewed || routingReviewSavingIds.includes(suggestion.part_id)}
+                  disabled={reviewed || reviewSaving}
                   className={`mt-4 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70 ${reviewed ? "border border-emerald-300 bg-emerald-50 text-emerald-800" : "bg-slate-900 text-white hover:bg-slate-700"}`}
                 >
-                  {routingReviewSavingIds.includes(suggestion.part_id)
-                    ? "Saving review..."
+                  {reviewSaving
+                    ? "Saving..."
                     : reviewed
-                      ? "Reviewed ✓ (saved)"
-                      : "Mark as reviewed"}
+                      ? "Review Saved"
+                      : "Save Routing Review"}
                 </button>
                 <p className="mt-2 text-xs text-slate-500">
                   Review is saved to Supabase with the estimator, timestamp, source, and routing snapshot. This does not approve factory instructions or apply the route to costing.

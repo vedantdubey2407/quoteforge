@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import jsPDF from "jspdf";
@@ -60,7 +61,8 @@ const formatDate = (value: string | null) =>
       }).format(new Date(value))
     : "Not available";
 
-export default function QuotePdfPage() {
+// Main PDF page content
+function QuotePdfContent() {
   const params = useParams();
   const router = useRouter();
   const quoteId = params.id as string;
@@ -79,6 +81,7 @@ export default function QuotePdfPage() {
         setError("");
 
         const supabase = createClient();
+
         const {
           data: { user },
           error: authError,
@@ -95,12 +98,16 @@ export default function QuotePdfPage() {
         );
 
         if (fetchError) throw fetchError;
-        if (!data) throw new Error("Approved quote details were not found.");
+        if (!data) {
+          throw new Error("Approved quote details were not found.");
+        }
 
         if (!active) return;
+
         setQuote(data as QuoteDetails);
       } catch (err) {
         console.error("Quote details loading error:", err);
+
         if (active) {
           setError(
             err instanceof Error
@@ -137,16 +144,23 @@ export default function QuotePdfPage() {
       // Header
       doc.setFillColor(23, 41, 35);
       doc.rect(0, 0, pageWidth, 38, "F");
+
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(21);
       doc.text("QUOTEFORGE", left, 17);
+
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.text("MANUFACTURING QUOTATION", left, 26);
+
       doc.setFont("helvetica", "bold");
-      doc.text(`QUOTE v${quote.version}`, right, 17, { align: "right" });
-      doc.text("APPROVED", right, 26, { align: "right" });
+      doc.text(`QUOTE v${quote.version}`, right, 17, {
+        align: "right",
+      });
+      doc.text("APPROVED", right, 26, {
+        align: "right",
+      });
 
       // Quotation details
       doc.setTextColor(25, 35, 31);
@@ -162,8 +176,18 @@ export default function QuotePdfPage() {
         body: [
           ["RFQ number", quote.rfq_number, "Customer", quote.customer_name],
           ["Part name", quote.part_name, "Part number", quote.part_number],
-          ["Material", quote.material, "Annual volume", formatNumber(quote.volume)],
-          ["Quote version", `v${quote.version}`, "Created", formatDate(quote.created_at)],
+          [
+            "Material",
+            quote.material,
+            "Annual volume",
+            formatNumber(quote.volume),
+          ],
+          [
+            "Quote version",
+            `v${quote.version}`,
+            "Created",
+            formatDate(quote.created_at),
+          ],
         ],
         styles: {
           font: "helvetica",
@@ -187,11 +211,12 @@ export default function QuotePdfPage() {
       });
 
       let cursorY =
-        (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
-          ?.finalY ?? 100;
+        (doc as jsPDF & { lastAutoTable?: { finalY: number } })
+          .lastAutoTable?.finalY ?? 100;
 
       // Cost breakdown
       cursorY += 12;
+
       if (cursorY > pageHeight - 90) {
         doc.addPage();
         cursorY = 20;
@@ -215,9 +240,15 @@ export default function QuotePdfPage() {
           ["Packing", formatINR(quote.packing_cost)],
           ["Freight", formatINR(quote.freight_cost)],
           ["Total manufacturing cost", formatINR(quote.total_cost)],
-          [`Selling price (margin ${quote.margin_percent}%)`, formatINR(quote.selling_price)],
+          [
+            `Selling price (margin ${quote.margin_percent}%)`,
+            formatINR(quote.selling_price),
+          ],
           [`GST (${quote.gst_percent}%)`, formatINR(quote.gst_amount)],
-          ["Selling price including GST", formatINR(quote.price_including_gst)],
+          [
+            "Selling price including GST",
+            formatINR(quote.price_including_gst),
+          ],
         ],
         styles: {
           font: "helvetica",
@@ -231,7 +262,9 @@ export default function QuotePdfPage() {
           textColor: [255, 255, 255],
           fontStyle: "bold",
         },
-        alternateRowStyles: { fillColor: [244, 247, 245] },
+        alternateRowStyles: {
+          fillColor: [244, 247, 245],
+        },
         columnStyles: {
           0: { cellWidth: 115 },
           1: { halign: "right", cellWidth: "auto" },
@@ -239,21 +272,24 @@ export default function QuotePdfPage() {
       });
 
       cursorY =
-        (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
-          ?.finalY ?? cursorY + 75;
+        (doc as jsPDF & { lastAutoTable?: { finalY: number } })
+          .lastAutoTable?.finalY ?? cursorY + 75;
 
-      // Keep the annual value and approval information together.
+      // Keep annual value and approval information together.
       const commentLines = quote.approval_comments
         ? doc.splitTextToSize(
             `Review comments: ${quote.approval_comments}`,
             contentWidth
           )
         : [];
+
       const approvalBlockHeight = 19 + commentLines.length * 4.5;
       const annualBlockHeight = 24;
-      const combinedHeight = 6 + annualBlockHeight + 5 + approvalBlockHeight;
+      const combinedHeight =
+        6 + annualBlockHeight + 5 + approvalBlockHeight;
 
       cursorY += 6;
+
       if (cursorY + combinedHeight > pageHeight - 22) {
         doc.addPage();
         cursorY = 20;
@@ -261,53 +297,91 @@ export default function QuotePdfPage() {
 
       // Annual quote value
       doc.setFillColor(235, 247, 240);
-      doc.roundedRect(left, cursorY, contentWidth, annualBlockHeight, 3, 3, "F");
+      doc.roundedRect(
+        left,
+        cursorY,
+        contentWidth,
+        annualBlockHeight,
+        3,
+        3,
+        "F"
+      );
+
       doc.setTextColor(23, 41, 35);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
-      doc.text("ANNUAL QUOTE VALUE (EXCLUDING GST)", left + 5, cursorY + 8);
+      doc.text(
+        "ANNUAL QUOTE VALUE (EXCLUDING GST)",
+        left + 5,
+        cursorY + 8
+      );
+
       doc.setFontSize(12);
-      doc.text(formatINR(quote.annual_value), left + 5, cursorY + 18);
+      doc.text(
+        formatINR(quote.annual_value),
+        left + 5,
+        cursorY + 18
+      );
 
       // Approval details
       cursorY += annualBlockHeight + 5;
+
       doc.setTextColor(25, 35, 31);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.text("Approval information", left, cursorY);
+
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(`Status: ${quote.status.toUpperCase()}`, left, cursorY + 5.5);
-      doc.text(`Reviewed at: ${formatDate(quote.reviewed_at)}`, left, cursorY + 11);
+      doc.text(
+        `Status: ${quote.status.toUpperCase()}`,
+        left,
+        cursorY + 5.5
+      );
+
+      doc.text(
+        `Reviewed at: ${formatDate(quote.reviewed_at)}`,
+        left,
+        cursorY + 11
+      );
 
       if (commentLines.length > 0) {
         doc.text(commentLines, left, cursorY + 16);
       }
 
-      // Footer is placed only after all content and never overlaps it.
+      // Footer
       const pageCount = doc.getNumberOfPages();
+
       for (let page = 1; page <= pageCount; page += 1) {
         doc.setPage(page);
         doc.setDrawColor(220, 226, 222);
         doc.line(left, pageHeight - 17, right, pageHeight - 17);
+
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         doc.setTextColor(110, 120, 115);
+
         doc.text(
           "QuoteForge | GST shown separately | Generated electronically",
           left,
           pageHeight - 10
         );
+
         doc.text(`${page} / ${pageCount}`, right, pageHeight - 10, {
           align: "right",
         });
       }
 
-      doc.save(`QuoteForge-${quote.rfq_number}-v${quote.version}.pdf`);
+      doc.save(
+        `QuoteForge-${quote.rfq_number}-v${quote.version}.pdf`
+      );
     } catch (err) {
       console.error("PDF generation error:", err);
+
       setError(
-        err instanceof Error ? err.message : "Unable to generate quotation PDF."
+        err instanceof Error
+          ? err.message
+          : "Unable to generate quotation PDF."
       );
     } finally {
       setDownloading(false);
@@ -319,7 +393,9 @@ export default function QuotePdfPage() {
       <main className="flex min-h-screen items-center justify-center bg-[#f5f7f6]">
         <div className="flex items-center gap-3 text-slate-600">
           <Loader2 size={22} className="animate-spin text-emerald-700" />
-          <span className="text-sm font-medium">Loading approved quote...</span>
+          <span className="text-sm font-medium">
+            Loading approved quote...
+          </span>
         </div>
       </main>
     );
@@ -341,6 +417,7 @@ export default function QuotePdfPage() {
             <div className="rounded-lg bg-emerald-50 p-3 text-emerald-700">
               <FileText size={25} />
             </div>
+
             <div>
               <p className="text-sm font-bold tracking-wider text-emerald-700">
                 QUOTEFORGE
@@ -363,18 +440,29 @@ export default function QuotePdfPage() {
               <div className="mt-6 grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-2">
                 <div>
                   <p className="text-xs text-slate-500">RFQ</p>
-                  <p className="mt-1 font-semibold text-slate-950">{quote.rfq_number}</p>
+                  <p className="mt-1 font-semibold text-slate-950">
+                    {quote.rfq_number}
+                  </p>
                 </div>
+
                 <div>
                   <p className="text-xs text-slate-500">Customer</p>
-                  <p className="mt-1 font-semibold text-slate-950">{quote.customer_name}</p>
+                  <p className="mt-1 font-semibold text-slate-950">
+                    {quote.customer_name}
+                  </p>
                 </div>
+
                 <div>
                   <p className="text-xs text-slate-500">Quote version</p>
-                  <p className="mt-1 font-semibold text-slate-950">v{quote.version}</p>
+                  <p className="mt-1 font-semibold text-slate-950">
+                    v{quote.version}
+                  </p>
                 </div>
+
                 <div>
-                  <p className="text-xs text-slate-500">Annual value · excl. GST</p>
+                  <p className="text-xs text-slate-500">
+                    Annual value · excl. GST
+                  </p>
                   <p className="mt-1 font-semibold text-slate-950">
                     {formatINR(quote.annual_value)}
                   </p>
@@ -391,12 +479,35 @@ export default function QuotePdfPage() {
                 ) : (
                   <Download size={19} />
                 )}
-                {downloading ? "Generating PDF..." : "Download quotation PDF"}
+
+                {downloading
+                  ? "Generating PDF..."
+                  : "Download quotation PDF"}
               </button>
             </>
           )}
         </section>
       </div>
     </main>
+  );
+}
+
+// Page-level Suspense boundary for useParams()
+export default function QuotePdfPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f5f7f6]">
+          <div className="flex items-center gap-3 text-slate-600">
+            <Loader2 size={22} className="animate-spin text-emerald-700" />
+            <span className="text-sm font-medium">
+              Loading quotation page...
+            </span>
+          </div>
+        </main>
+      }
+    >
+      <QuotePdfContent />
+    </Suspense>
   );
 }

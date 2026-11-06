@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -25,7 +26,9 @@ type RateWithHistory = RateMaster & {
 
 const today = () => {
   const date = new Date();
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  const local = new Date(
+    date.getTime() - date.getTimezoneOffset() * 60000
+  );
   return local.toISOString().slice(0, 10);
 };
 
@@ -38,14 +41,22 @@ const formatRate = (value: number) =>
 export default function RatesPage() {
   const router = useRouter();
   const supabase = createClient();
+
   const [rates, setRates] = useState<RateWithHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [selectedRate, setSelectedRate] = useState<RateWithHistory | null>(null);
+  const [selectedRate, setSelectedRate] =
+    useState<RateWithHistory | null>(null);
   const [newValue, setNewValue] = useState("");
-  const [effectiveFrom, setEffectiveFrom] = useState(today());
+  const [todayDate, setTodayDate] = useState("");
+  const [effectiveFrom, setEffectiveFrom] = useState("");
+
+  // Calculate today's date after the component mounts.
+  useEffect(() => {
+    setTodayDate(today());
+  }, []);
 
   const loadRates = useCallback(async () => {
     setLoading(true);
@@ -83,34 +94,37 @@ export default function RatesPage() {
 
     setRates(combined);
     setLoading(false);
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     loadRates();
   }, [loadRates]);
 
   const activeRate = (rate: RateWithHistory) => {
-    const date = today();
+    if (!todayDate) return undefined;
+
     return rate.versions.find(
       (version) =>
-        version.effective_from <= date &&
-        (!version.effective_to || version.effective_to >= date)
+        version.effective_from <= todayDate &&
+        (!version.effective_to || version.effective_to >= todayDate)
     );
   };
 
   const groupedRates = useMemo(() => {
     const groups: Record<string, RateWithHistory[]> = {};
+
     rates.forEach((rate) => {
       groups[rate.rate_type] ||= [];
       groups[rate.rate_type].push(rate);
     });
+
     return groups;
   }, [rates]);
 
   const openEditor = (rate: RateWithHistory) => {
     setSelectedRate(rate);
     setNewValue("");
-    setEffectiveFrom(today());
+    setEffectiveFrom(todayDate);
     setError("");
     setSuccess("");
   };
@@ -119,12 +133,21 @@ export default function RatesPage() {
     if (!selectedRate) return;
 
     const numericValue = Number(newValue);
-    if (!newValue.trim() || !Number.isFinite(numericValue) || numericValue < 0) {
+
+    if (
+      !newValue.trim() ||
+      !Number.isFinite(numericValue) ||
+      numericValue < 0
+    ) {
       setError("Enter a valid rate greater than or equal to zero.");
       return;
     }
 
-    if (!effectiveFrom || effectiveFrom < today()) {
+    if (
+      !todayDate ||
+      !effectiveFrom ||
+      effectiveFrom < todayDate
+    ) {
       setError("Choose today or a future effective date.");
       return;
     }
@@ -164,6 +187,7 @@ export default function RatesPage() {
               View current rates and add new effective-dated values.
             </p>
           </div>
+
           <button
             onClick={() => router.push("/dashboard")}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold hover:bg-slate-100"
@@ -177,6 +201,7 @@ export default function RatesPage() {
             {error}
           </div>
         )}
+
         {success && (
           <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
             {success}
@@ -201,6 +226,7 @@ export default function RatesPage() {
                 <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
                   <h2 className="font-bold capitalize">{type} rates</h2>
                 </div>
+
                 <div className="divide-y divide-slate-100">
                   {items.map((rate) => {
                     const current = activeRate(rate);
@@ -212,30 +238,43 @@ export default function RatesPage() {
                         className="flex flex-col justify-between gap-4 px-5 py-5 sm:flex-row sm:items-center"
                       >
                         <div>
-                          <h3 className="font-semibold">{rate.rate_name}</h3>
+                          <h3 className="font-semibold">
+                            {rate.rate_name}
+                          </h3>
+
                           <p className="mt-1 text-sm text-slate-500">
                             Unit: {rate.unit}
                           </p>
+
                           {current ? (
                             <p className="mt-2 text-sm text-emerald-700">
-                              Current rate: <strong>{formatRate(Number(current.rate_value))}</strong>{" "}
-                              {rate.unit} · Effective from {current.effective_from}
+                              Current rate:{" "}
+                              <strong>
+                                {formatRate(Number(current.rate_value))}
+                              </strong>{" "}
+                              {rate.unit} · Effective from{" "}
+                              {current.effective_from}
                             </p>
                           ) : (
                             <p className="mt-2 text-sm text-amber-700">
                               No rate effective today
                               {latest
-                                ? ` · Latest value ${formatRate(Number(latest.rate_value))} from ${latest.effective_from}`
+                                ? ` · Latest value ${formatRate(
+                                    Number(latest.rate_value)
+                                  )} from ${latest.effective_from}`
                                 : ""}
                             </p>
                           )}
+
                           <p className="mt-1 text-xs text-slate-500">
                             {rate.versions.length} rate version(s) recorded
                           </p>
                         </div>
+
                         <button
                           onClick={() => openEditor(rate)}
-                          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                          disabled={!todayDate}
+                          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
                         >
                           Add new rate
                         </button>
@@ -252,6 +291,7 @@ export default function RatesPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
               <h2 className="text-xl font-bold">Add a new rate</h2>
+
               <p className="mt-1 text-sm text-slate-600">
                 {selectedRate.rate_name} · {selectedRate.unit}
               </p>
@@ -273,7 +313,7 @@ export default function RatesPage() {
                 Effective from
                 <input
                   type="date"
-                  min={today()}
+                  min={todayDate}
                   value={effectiveFrom}
                   onChange={(event) => setEffectiveFrom(event.target.value)}
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
@@ -293,9 +333,10 @@ export default function RatesPage() {
                 >
                   Cancel
                 </button>
+
                 <button
                   onClick={saveRate}
-                  disabled={savingId !== null}
+                  disabled={savingId !== null || !todayDate}
                   className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
                 >
                   {savingId ? "Saving..." : "Save rate"}

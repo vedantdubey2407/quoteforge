@@ -11,6 +11,11 @@ type Customer = {
   name: string;
 };
 
+const inputClass =
+  "mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100";
+
+const labelClass = "block text-sm font-semibold text-slate-800";
+
 export default function NewRFQPage() {
   const router = useRouter();
 
@@ -36,7 +41,9 @@ export default function NewRFQPage() {
     async function loadCustomers() {
       const supabase = createClient();
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
         router.replace("/");
@@ -96,7 +103,9 @@ export default function NewRFQPage() {
     const supabase = createClient();
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
         router.replace("/");
@@ -165,64 +174,62 @@ export default function NewRFQPage() {
 
   if (loadingCustomers) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin text-emerald-700" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-emerald-700" size={28} />
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f6f4] p-6 md:p-10">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8 md:py-10">
+      <div className="mx-auto max-w-4xl">
         <button
+          type="button"
           onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
+          className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-slate-950"
         >
-          <ArrowLeft size={18} /> Back to dashboard
+          <ArrowLeft size={18} />
+          Back to dashboard
         </button>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-6 md:p-9">
-          <p className="text-xs tracking-wider text-emerald-700 font-semibold">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:p-9">
+          <p className="text-xs font-bold tracking-wider text-emerald-700">
             RFQ MANAGEMENT
           </p>
 
-          <h1 className="text-3xl font-bold text-[#172923] mt-2">
+          <h1 className="mt-2 text-3xl font-bold text-slate-900">
             Create new RFQ
           </h1>
 
-          <p className="text-gray-500 mt-2 mb-8">
+          <p className="mb-8 mt-2 text-sm text-slate-600">
             Enter the customer request and initial part information.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-8">
             <section>
-              <h2 className="font-semibold text-gray-900 mb-4">
+              <h2 className="mb-4 font-semibold text-slate-900">
                 RFQ details
               </h2>
 
-              <div className="grid md:grid-cols-2 gap-5">
+              <div className="grid gap-5 md:grid-cols-2">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    RFQ Number
-                  </label>
+                  <label className={labelClass}>RFQ Number</label>
                   <input
                     required
                     value={rfqNumber}
                     onChange={(e) => setRfqNumber(e.target.value)}
                     placeholder="RFQ-2611-024"
-                    className="mt-2 w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-emerald-700"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    Customer
-                  </label>
+                  <label className={labelClass}>Customer</label>
                   <select
                     required
                     value={customerId}
                     onChange={(e) => setCustomerId(e.target.value)}
-                    className="mt-2 w-full border rounded-lg p-3 bg-white outline-none focus:ring-2 focus:ring-emerald-700"
+                    className={inputClass}
                   >
                     <option value="">Select customer</option>
                     {customers.map((customer) => (
@@ -231,71 +238,68 @@ export default function NewRFQPage() {
                       </option>
                     ))}
                   </select>
+
                   {customers.length === 0 && (
-                    <p className="text-xs text-amber-700 mt-2">
+                    <p className="mt-2 text-xs text-amber-700">
                       No customers found. Check customer read permissions.
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    Due Date
-                  </label>
+                  <label className={labelClass}>Due Date</label>
                   <input
                     type="date"
                     required
                     min={new Date().toISOString().split("T")[0]}
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    className="mt-2 w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-emerald-700"
+                    className={`${inputClass} [color-scheme:light]`}
                   />
                 </div>
               </div>
             </section>
 
-            <section className="border-t pt-7">
-              <h2 className="font-semibold text-gray-900 mb-4">
+            <section className="border-t border-slate-200 pt-7">
+              <h2 className="mb-4 font-semibold text-slate-900">
                 Part information
               </h2>
 
-              <div className="grid md:grid-cols-2 gap-5">
+              <div className="grid gap-5 md:grid-cols-2">
                 <div>
-                  <label className="text-sm font-medium">Part Name</label>
+                  <label className={labelClass}>Part Name</label>
                   <input
                     required
                     value={partName}
                     onChange={(e) => setPartName(e.target.value)}
                     placeholder="Rear wheel spindle"
-                    className="mt-2 w-full border rounded-lg p-3"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">Part Number</label>
+                  <label className={labelClass}>Part Number</label>
                   <input
                     value={partNumber}
                     onChange={(e) => setPartNumber(e.target.value)}
                     placeholder="RWS-024"
-                    className="mt-2 w-full border rounded-lg p-3"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">Material</label>
+                  <label className={labelClass}>Material</label>
                   <input
                     required
                     value={material}
                     onChange={(e) => setMaterial(e.target.value)}
                     placeholder="EN8"
-                    className="mt-2 w-full border rounded-lg p-3"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">
-                    Gross Weight (kg)
-                  </label>
+                  <label className={labelClass}>Gross Weight (kg)</label>
                   <input
                     type="number"
                     step="0.0001"
@@ -304,14 +308,12 @@ export default function NewRFQPage() {
                     value={weight}
                     onChange={(e) => setWeight(e.target.value)}
                     placeholder="0.61"
-                    className="mt-2 w-full border rounded-lg p-3"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">
-                    Annual Volume (units)
-                  </label>
+                  <label className={labelClass}>Annual Volume (units)</label>
                   <input
                     type="number"
                     min="1"
@@ -320,14 +322,12 @@ export default function NewRFQPage() {
                     value={volume}
                     onChange={(e) => setVolume(e.target.value)}
                     placeholder="180000"
-                    className="mt-2 w-full border rounded-lg p-3"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">
-                    Cycle Time (minutes)
-                  </label>
+                  <label className={labelClass}>Cycle Time (minutes)</label>
                   <input
                     type="number"
                     step="0.0001"
@@ -336,14 +336,12 @@ export default function NewRFQPage() {
                     value={cycleTime}
                     onChange={(e) => setCycleTime(e.target.value)}
                     placeholder="3.2"
-                    className="mt-2 w-full border rounded-lg p-3"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">
-                    Machine Hour Rate (₹)
-                  </label>
+                  <label className={labelClass}>Machine Hour Rate (₹)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -352,29 +350,35 @@ export default function NewRFQPage() {
                     value={hourRate}
                     onChange={(e) => setHourRate(e.target.value)}
                     placeholder="850"
-                    className="mt-2 w-full border rounded-lg p-3"
+                    className={inputClass}
                   />
                 </div>
               </div>
             </section>
 
             {error && (
-              <p role="alert" className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
+              <p
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              >
                 {error}
               </p>
             )}
 
             {success && (
-              <p role="status" className="bg-green-50 text-green-700 p-3 rounded-lg text-sm">
+              <p
+                role="status"
+                className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
+              >
                 {success}
               </p>
             )}
 
-            <div className="flex justify-end border-t pt-6">
+            <div className="flex justify-end border-t border-slate-200 pt-6">
               <button
                 type="submit"
                 disabled={loading || customers.length === 0}
-                className="bg-[#172923] text-white px-6 py-3 rounded-lg flex items-center gap-2 hover:bg-[#263d32] disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg bg-[#172923] px-6 py-3 font-semibold text-white transition hover:bg-[#263d32] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 size={18} className="animate-spin" />
